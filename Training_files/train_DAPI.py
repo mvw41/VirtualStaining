@@ -1,6 +1,4 @@
-"""Training script for reconstructing DAPI from brightfield images using UNet."""
-
-from __future__ import annotations
+"""Train UNet to reconstruct DAPI images from brightfield inputs."""
 
 import argparse
 import os
@@ -11,66 +9,49 @@ from torch.utils.data import DataLoader
 from Data_handling.dataloader import BFDAPIDataset
 from Models.unet import UNet
 
-BF_DIR       = "Data_handling/Trainings_Daten/8_bit/BF"
-DAPI_DIR     = "Data_handling/Trainings_Daten/8_bit/DAPI"
-FILE_LIST   = [f for f in os.listdir(BF_DIR) if f.lower().endswith(".tif")]
-N_EPOCHS    = 20
-DEVICE      = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-def get_loaders(batch_size):
-    # Split in Train/Val
-    split = int(0.8 * len(FILE_LIST))
-    train_files, val_files = FILE_LIST[:split], FILE_LIST[split:]
-
-    train_ds = BFDAPIDataset(
-        bf_dir=BF_DIR,
-        dapi_dir=DAPI_DIR,
-        file_list=train_files,
-        tile_size=256,
-        num_tiles_per_image=100
-    )
-    val_ds = BFDAPIDataset(
-        bf_dir=BF_DIR,
-        dapi_dir=DAPI_DIR,
-        file_list=val_files,
-        tile_size=256,
-        num_tiles_per_image=100
-    )
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=4)
-    val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False, num_workers=4)
-    return train_loader, val_loader
+BF_DIR = "Data_handling/Trainings_Daten/8_bit/BF"
+DAPI_DIR = "Data_handling/Trainings_Daten/8_bit/DAPI"
+MODEL_PATH = "dapi_model.pth"
 
 
-def train_epoch(dataloader: DataLoader, model: UNet, loss_fn: nn.Module, optimizer: torch.optim.Optimizer, device: torch.device) -> None:
+def get_loaders(bf_dir: str, dapi_dir: str, batch_size: int):
+    files = [f for f in os.listdir(bf_dir) if f.lower().endswith(".tif")]
+    split = int(0.8 * len(files))
+    train_ds = BFDAPIDataset(bf_dir, dapi_dir, files[:split])
+    val_ds = BFDAPIDataset(bf_dir, dapi_dir, files[split:])
+    kwargs = dict(batch_size=batch_size, num_workers=4, shuffle=True)
+    return DataLoader(train_ds, **kwargs), DataLoader(val_ds, **kwargs)
+
+
+def train_epoch(loader: DataLoader, model: UNet, loss_fn: nn.Module,
+                optimizer: torch.optim.Optimizer, device: torch.device) -> None:
     model.train()
-    for bf, dapi in dataloader:
-        bf = bf.to(device)
-        dapi = dapi.to(device)
-        pred = model(bf)
-        loss = loss_fn(pred, dapi)
+    for bf, dapi in loader:
+        bf, dapi = bf.to(device), dapi.to(device)
+        loss = loss_fn(model(bf), dapi)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Train UNet to predict DAPI from brightfield images")
-    parser.add_argument("--bf_dir", required=True, help="Directory with brightfield images (1024x1024)")
-    parser.add_argument("--dapi_dir", required=True, help="Directory with corresponding DAPI images")
+    parser = argparse.ArgumentParser(
+        description="Train UNet for DAPI reconstruction")
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--batch_size", type=int, default=4)
     args = parser.parse_args()
 
-    dataloader = BFDAPIDataset(args.bf_dir, args.dapi_dir, batch_size=args.batch_size)
+    train_loader, _ = get_loaders(BF_DIR, DAPI_DIR, args.batch_size)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = UNet().to(device)
+    model = UNet(in_channels=1, out_channels=1).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     loss_fn = nn.MSELoss()
 
     for _ in range(args.epochs):
-        train_epoch(dataloader, model, loss_fn, optimizer, device)
+        train_epoch(train_loader, model, loss_fn, optimizer, device)
 
+    torch.save(model.state_dict(), MODEL_PATH)
     print("DAPI training finished")
 
 
