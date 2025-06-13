@@ -9,6 +9,10 @@ from torch.utils.data import DataLoader
 from Data_handling.dataloader import BFDAPIDataset
 from Models.unet import UNet
 
+BF_DIR = "Data_handling/Trainings_Daten/8_bit/BF"
+DAPI_DIR = "Data_handling/Trainings_Daten/8_bit/DAPI"
+MODEL_PATH = "dapi_model.pth"
+
 
 def get_loaders(bf_dir: str, dapi_dir: str, batch_size: int):
     files = [f for f in os.listdir(bf_dir) if f.lower().endswith(".tif")]
@@ -33,15 +37,11 @@ def train_epoch(loader: DataLoader, model: UNet, loss_fn: nn.Module,
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Train UNet for DAPI reconstruction")
-    parser.add_argument("--bf_dir", required=True)
-    parser.add_argument("--dapi_dir", required=True)
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--batch_size", type=int, default=4)
-    parser.add_argument("--out", default="dapi_model.pth",
-                        help="Path to save model weights")
     args = parser.parse_args()
 
-    train_loader, _ = get_loaders(args.bf_dir, args.dapi_dir, args.batch_size)
+    train_loader, _ = get_loaders(BF_DIR, DAPI_DIR, args.batch_size)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = UNet(in_channels=1, out_channels=1).to(device)
@@ -51,7 +51,7 @@ def main() -> None:
     for _ in range(args.epochs):
         train_epoch(train_loader, model, loss_fn, optimizer, device)
 
-    torch.save(model.state_dict(), args.out)
+    torch.save(model.state_dict(), MODEL_PATH)
     print("DAPI training finished")
 
 
