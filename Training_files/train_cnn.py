@@ -89,7 +89,7 @@ def train_epoch(
 
 
 def main() -> None:
-    from combine_cnn import CombineCNN
+    from Models.combine_cnn import CombineCNN
 
     dataset = DummyDataset()
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=2)
