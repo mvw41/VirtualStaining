@@ -5,8 +5,6 @@ This network serves as a base model for reconstructing individual stains
 such as DAPI from brightfield images.
 """
 
-from __future__ import annotations
-
 import torch
 import torch.nn as nn
 

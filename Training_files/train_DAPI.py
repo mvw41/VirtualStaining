@@ -3,13 +3,42 @@
 from __future__ import annotations
 
 import argparse
-
+import os
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from dataloader import create_dataloader
-from unet import UNet
+from Data_handling.dataloader import BFDAPIDataset
+from Models.unet import UNet
+
+BF_DIR       = "Data_handling/Trainings_Daten/8_bit/BF"
+DAPI_DIR     = "Data_handling/Trainings_Daten/8_bit/DAPI"
+FILE_LIST   = [f for f in os.listdir(BF_DIR) if f.lower().endswith(".tif")]
+N_EPOCHS    = 20
+DEVICE      = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def get_loaders(batch_size):
+    # Split in Train/Val
+    split = int(0.8 * len(FILE_LIST))
+    train_files, val_files = FILE_LIST[:split], FILE_LIST[split:]
+
+    train_ds = BFDAPIDataset(
+        bf_dir=BF_DIR,
+        dapi_dir=DAPI_DIR,
+        file_list=train_files,
+        tile_size=256,
+        num_tiles_per_image=100
+    )
+    val_ds = BFDAPIDataset(
+        bf_dir=BF_DIR,
+        dapi_dir=DAPI_DIR,
+        file_list=val_files,
+        tile_size=256,
+        num_tiles_per_image=100
+    )
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=4)
+    val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False, num_workers=4)
+    return train_loader, val_loader
 
 
 def train_epoch(dataloader: DataLoader, model: UNet, loss_fn: nn.Module, optimizer: torch.optim.Optimizer, device: torch.device) -> None:
@@ -32,7 +61,7 @@ def main() -> None:
     parser.add_argument("--batch_size", type=int, default=4)
     args = parser.parse_args()
 
-    dataloader = create_dataloader(args.bf_dir, args.dapi_dir, batch_size=args.batch_size)
+    dataloader = BFDAPIDataset(args.bf_dir, args.dapi_dir, batch_size=args.batch_size)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = UNet().to(device)
